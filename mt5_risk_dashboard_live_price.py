@@ -52,6 +52,7 @@ def map_yf_symbol(mt5_symbol):
         "BTCUSD": "BTC-USD",
         "USDJPY": "USDJPY=X",
         "EURUSD": "EURUSD=X",
+        "USOIL": "CL=F"
     }
     return overrides.get(mt5_symbol, mt5_symbol + "=X")
 
@@ -66,6 +67,7 @@ def fetch_price(symbol):
 
 # === Load Symbols ===
 symbols = load_symbols()
+symbols.append({"symbol": "USOIL", "pip_precision": 0.1})
 symbol_names = [s["symbol"] for s in symbols]
 selected_symbol = st.selectbox("🧭 Select Symbol", options=symbol_names, index=symbol_names.index(st.session_state.selected_symbol))
 st.session_state.selected_symbol = selected_symbol
