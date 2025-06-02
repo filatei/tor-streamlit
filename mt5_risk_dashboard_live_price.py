@@ -1,3 +1,5 @@
+# mt5_risk_dashboard_signals.py
+
 import streamlit as st
 import requests
 import json
@@ -55,43 +57,32 @@ live_price = fetch_price(yf_symbol)
 trade_direction = st.radio("Trade Direction", ["📈 Buy", "📉 Sell"], horizontal=True)
 is_buy = trade_direction.startswith("📈")
 
-# === Modal Trigger in Top-Right ===
+# === Floating Drawer CSS ===
 st.markdown("""
     <style>
-    div.stButton > button {
-        float: right;
-    }
-    .modal-container {
-        position: fixed;
-        top: 90px;
-        right: 10px;
-        width: 300px;
-        background-color: #111;
-        padding: 1rem;
-        border-radius: 10px;
-        z-index: 9999;
-        box-shadow: 0 0 15px rgba(255,255,255,0.2);
-    }
+    .drawer-button { position: fixed; top: 1rem; right: 1rem; z-index: 1001; }
+    .drawer { position: fixed; top: 0; right: 0; height: 100%; width: 300px; background-color: #111; padding: 1rem; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.3); z-index: 1000; display: block; }
+    .close-drawer { float: right; cursor: pointer; color: #fff; }
     </style>
 """, unsafe_allow_html=True)
 
-if st.button("⚙️", help="Open Trade Settings"):
+if st.button("⚙️", key="drawer-btn", help="Open Trade Settings"):
     st.session_state.show_settings = True
 
-# === Settings Modal ===
+# === Drawer UI ===
 if st.session_state.show_settings:
-    st.markdown('<div class="modal-container">', unsafe_allow_html=True)
-    if st.button("❌", key="close_modal"):
+    st.markdown('<div class="drawer">', unsafe_allow_html=True)
+    if st.button("❌", key="close_drawer"):
         st.session_state.show_settings = False
 
     st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.get("account_size", 10000.0), step=100.0)
     st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.get("lot_size", 0.10), step=0.01)
     st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.get("risk_percent", 1.0), step=0.1)
-    st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or 1.1400, format="%.5f", key="entry_price_modal")
-    st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=1, key="rr_modal")
+    st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or 1.1400, format="%.5f", key="entry_price_drawer")
+    st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=1, key="rr_drawer")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# === Use Modal Values ===
+# === Apply Drawer Values ===
 account_size = st.session_state.account_size
 lot_size = st.session_state.lot_size
 risk_percent = st.session_state.risk_percent
@@ -108,7 +99,7 @@ tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - 
 stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
 take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
 
-# === Final Risk Metrics ===
+# === Final Calculations ===
 sl_pips = abs(entry_price - stop_loss_price) / pip_precision
 tp_pips = abs(take_profit_price - entry_price) / pip_precision
 risk_amount = sl_pips * lot_size * 10
@@ -188,7 +179,7 @@ with st.expander("📈 Historical Price Chart"):
         else:
             st.warning("No historical data returned.")
 
-# === Footer & Logo ===
+# === Footer ===
 st.markdown("---")
 st.image("./images/logo.png", width=120)
 st.caption("© 2025 Torama. All rights reserved.")
