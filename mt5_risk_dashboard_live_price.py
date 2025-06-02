@@ -21,7 +21,6 @@ def load_symbols():
         if response.status_code == 200:
             return response.json()
     except Exception:
-        # st.warning("⚠️ API not available. Loading local config.")
         with open("symbols_config.json", "r") as f:
             return json.load(f)
 
