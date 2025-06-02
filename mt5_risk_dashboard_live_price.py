@@ -13,7 +13,6 @@ def ensure_session_state_defaults():
     defaults = {
         "selected_symbol": "BTCUSD",
         "plan_exported": False,
-        "show_settings": False,
         "account_size": 10000.0,
         "lot_size": 0.10,
         "risk_percent": 1.0,
@@ -27,42 +26,11 @@ def ensure_session_state_defaults():
 ensure_session_state_defaults()
 
 # === App Title & Header ===
-st.markdown("""
-    <style>
-    .drawer-button { position: fixed; top: 1rem; right: 1rem; z-index: 1001; }
-    .drawer {
-        position: fixed;
-        top: 0;
-        right: 0;
-        height: 100%;
-        width: 100vw;
-        max-width: 320px;
-        background-color: #111;
-        padding: 1rem;
-        overflow-y: auto;
-        box-shadow: -2px 0 10px rgba(0,0,0,0.3);
-        z-index: 1000;
-        display: block;
-    }
-    .close-drawer {
-        float: right;
-        cursor: pointer;
-        color: #fff;
-    }
-    @media (max-width: 768px) {
-        .drawer { width: 100vw; }
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-logo_col, title_col, settings_col = st.columns([1, 6, 1])
+logo_col, title_col = st.columns([1, 8])
 with logo_col:
     st.image("./images/logo.png", width=50)
 with title_col:
     st.markdown("<h2 style='margin-top: 0.5em;'>MT5 Risk Dashboard</h2>", unsafe_allow_html=True)
-with settings_col:
-    if st.button("⚙️", key="drawer-btn", help="Open Trade Settings"):
-        st.session_state.show_settings = True
 
 # === Symbol Utilities ===
 def load_symbols():
@@ -111,21 +79,15 @@ live_price = fetch_price(yf_symbol)
 trade_direction = st.radio("Trade Direction", ["📈 Buy", "📉 Sell"], horizontal=True)
 is_buy = trade_direction.startswith("📈")
 
-# === Drawer UI ===
-if st.session_state.show_settings:
-    with st.container():
-        st.markdown('<div class="drawer">', unsafe_allow_html=True)
-        if st.button("❌", key="close_drawer"):
-            st.session_state.show_settings = False
+# === Inline Trade Settings ===
+st.markdown("### ⚙️ Trade Settings")
+st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.account_size, step=100.0)
+st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.lot_size, step=0.01)
+st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.risk_percent, step=0.1)
+st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f")
+st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice))
 
-        st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.account_size, step=100.0)
-        st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.lot_size, step=0.01)
-        st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.risk_percent, step=0.1)
-        st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f", key="entry_price_drawer")
-        st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice), key="rr_drawer")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# === Apply Drawer Values ===
+# === Apply Values ===
 account_size = st.session_state.account_size
 lot_size = st.session_state.lot_size
 risk_percent = st.session_state.risk_percent
