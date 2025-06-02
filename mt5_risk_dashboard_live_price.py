@@ -174,7 +174,7 @@ with st.expander("📈 Historical Price Chart + Backtest"):
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
     session_filter = st.selectbox("🕒 Session Filter", ["All", "London", "New York"], index=0)
 
-    if st.button("\ud83d\udcc5 Fetch, Filter & Backtest"):
+    if st.button("📅 Fetch, Filter & Backtest"):
         df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
         if df.empty:
             st.warning("No data returned from Yahoo Finance.")
@@ -192,7 +192,7 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             # Save raw CSV
             csv = df.to_csv(index=False).encode("utf-8")
             filename = f"{selected_symbol}_{period}_{interval}_{session_filter}.csv"
-            st.download_button("\u2b07\ufe0f Download Filtered CSV", data=csv, file_name=filename)
+            st.download_button("⬇️ Download Filtered CSV", data=csv, file_name=filename)
 
             # Plot chart
             df["MA9"] = df["Close"].rolling(9).mean()
