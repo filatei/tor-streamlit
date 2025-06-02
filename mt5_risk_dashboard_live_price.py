@@ -8,6 +8,12 @@ import pandas as pd
 import plotly.graph_objs as go
 from datetime import datetime
 
+# === Initialize state ===
+if "selected_symbol" not in st.session_state:
+    st.session_state.selected_symbol = "BTCUSD"
+if "plan_exported" not in st.session_state:
+    st.session_state.plan_exported = False
+
 # === Symbol Utilities ===
 def load_symbols():
     try:
@@ -40,11 +46,6 @@ def fetch_price(symbol):
 # === Load Symbols & Price ===
 symbols = load_symbols()
 symbol_names = [s["symbol"] for s in symbols]
-
-# Use session_state to persist symbol choice
-if "selected_symbol" not in st.session_state:
-    st.session_state.selected_symbol = "BTCUSD"
-
 selected_symbol = st.selectbox("🧭 Select Symbol", options=symbol_names, index=symbol_names.index(st.session_state.selected_symbol))
 st.session_state.selected_symbol = selected_symbol
 pip_precision = next((s["pip_precision"] for s in symbols if s["symbol"] == selected_symbol), 0.0001)
@@ -65,18 +66,17 @@ with st.expander("⚙️ Trade Settings", expanded=True):
     rr_map = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}
     rr_value = rr_map[rr_choice]
 
-# === SL/TP Calculation
+# === SL/TP Calculation ===
 risk_dollar = account_size * (risk_percent / 100)
 sl_pips = risk_dollar / (lot_size * 10)
 tp_pips = sl_pips * rr_value
-
 sl_price = entry_price - (sl_pips * pip_precision) if is_buy else entry_price + (sl_pips * pip_precision)
 tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - (tp_pips * pip_precision)
 
 stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
 take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
 
-# === Recalculate
+# === Final Calculation ===
 sl_pips = abs(entry_price - stop_loss_price) / pip_precision
 tp_pips = abs(take_profit_price - entry_price) / pip_precision
 risk_amount = sl_pips * lot_size * 10
@@ -84,7 +84,7 @@ reward_amount = tp_pips * lot_size * 10
 rr_ratio = reward_amount / risk_amount if risk_amount else 0
 suggested_lot_size = (account_size * risk_percent / 100) / (sl_pips * 10) if sl_pips else 0
 
-# === Trade Summary
+# === Trade Summary ===
 st.subheader("📊 Trade Summary")
 if live_price:
     st.info(f"💹 Current {selected_symbol} Price: {live_price}")
@@ -100,14 +100,12 @@ cols2[0].metric("Risk ($)", f"${risk_amount:.2f}")
 cols2[1].metric("Reward ($)", f"${reward_amount:.2f}")
 st.caption(f"Suggested Lot Size: {suggested_lot_size:.2f}")
 
-# === Export Trade Plan ===
+# === Export JSON ===
 custom_path = st.text_input("📁 Export Path", value="trade_risk_calc.json")
 if st.button("📤 Export Trade Plan"):
-    export_symbol = st.session_state.selected_symbol
-    export_yf_symbol = map_yf_symbol(export_symbol)
     trade_data = {
-        "symbol": export_symbol,
-        "yf_symbol": export_yf_symbol,
+        "symbol": st.session_state.selected_symbol,
+        "yf_symbol": map_yf_symbol(st.session_state.selected_symbol),
         "trade_type": "Buy" if is_buy else "Sell",
         "lot_size": lot_size,
         "account_size": account_size,
@@ -126,10 +124,11 @@ if st.button("📤 Export Trade Plan"):
     }
     with open(custom_path, "w") as f:
         json.dump(trade_data, f, indent=2)
+    st.session_state.plan_exported = True
     st.success(f"✅ Saved to {custom_path}")
 
-# === View Trade JSON ===
-if st.button("📄 View Trade Plan"):
+# === View Plan ===
+if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported):
     try:
         with open(custom_path, "r") as f:
             content = f.read()
@@ -137,12 +136,12 @@ if st.button("📄 View Trade Plan"):
     except FileNotFoundError:
         st.warning("No trade plan found at given path.")
 
-# === Historical Data Chart ===
+# === History View ===
 with st.expander("📈 Historical Price Chart"):
     period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo"])
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
     if st.button("📥 Fetch & Plot History"):
-        df = yf.download(yf_symbol, period=period, interval=interval)
+        df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
         if not df.empty:
             df["MA9"] = df["Close"].rolling(9).mean()
             df["MA21"] = df["Close"].rolling(21).mean()
