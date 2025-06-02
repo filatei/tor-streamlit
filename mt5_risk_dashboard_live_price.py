@@ -169,10 +169,10 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
 # Additional enhancements to be added to your Streamlit app
 
 # === Updated Chart Block with Auto-Export, Session Filter, and Backtest ===
-with st.expander("\ud83d\udcc8 Historical Price Chart + Backtest"):
-    period = st.selectbox("\ud83d\uddd5\ufe0f Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
-    interval = st.selectbox("\u23f1\ufe0f Interval", ["1h", "30m", "15m"])
-    session_filter = st.selectbox("\ud83d\udd52 Session Filter", ["All", "London", "New York"], index=0)
+with st.expander("📈 Historical Price Chart + Backtest"):
+    period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
+    interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
+    session_filter = st.selectbox("🕒 Session Filter", ["All", "London", "New York"], index=0)
 
     if st.button("\ud83d\udcc5 Fetch, Filter & Backtest"):
         df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
