@@ -15,6 +15,16 @@ if "plan_exported" not in st.session_state:
     st.session_state.plan_exported = False
 if "show_settings" not in st.session_state:
     st.session_state.show_settings = False
+if "account_size" not in st.session_state:
+    st.session_state.account_size = 10000.0
+if "lot_size" not in st.session_state:
+    st.session_state.lot_size = 0.10
+if "risk_percent" not in st.session_state:
+    st.session_state.risk_percent = 1.0
+if "entry_price" not in st.session_state:
+    st.session_state.entry_price = 1.1400
+if "rr_choice" not in st.session_state:
+    st.session_state.rr_choice = "1:2"
 
 # === Symbol Utilities ===
 def load_symbols():
@@ -75,11 +85,11 @@ if st.session_state.show_settings:
     if st.button("❌", key="close_drawer"):
         st.session_state.show_settings = False
 
-    st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.get("account_size", 10000.0), step=100.0)
-    st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.get("lot_size", 0.10), step=0.01)
-    st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.get("risk_percent", 1.0), step=0.1)
-    st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or 1.1400, format="%.5f", key="entry_price_drawer")
-    st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=1, key="rr_drawer")
+    st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.account_size, step=100.0)
+    st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.lot_size, step=0.01)
+    st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.risk_percent, step=0.1)
+    st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f", key="entry_price_drawer")
+    st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice), key="rr_drawer")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # === Apply Drawer Values ===
