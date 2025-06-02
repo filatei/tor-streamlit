@@ -9,22 +9,22 @@ import plotly.graph_objs as go
 from datetime import datetime
 
 # === Session State Defaults ===
-if "selected_symbol" not in st.session_state:
-    st.session_state.selected_symbol = "BTCUSD"
-if "plan_exported" not in st.session_state:
-    st.session_state.plan_exported = False
-if "show_settings" not in st.session_state:
-    st.session_state.show_settings = False
-if "account_size" not in st.session_state:
-    st.session_state.account_size = 10000.0
-if "lot_size" not in st.session_state:
-    st.session_state.lot_size = 0.10
-if "risk_percent" not in st.session_state:
-    st.session_state.risk_percent = 1.0
-if "entry_price" not in st.session_state:
-    st.session_state.entry_price = 1.1400
-if "rr_choice" not in st.session_state:
-    st.session_state.rr_choice = "1:2"
+def ensure_session_state_defaults():
+    defaults = {
+        "selected_symbol": "BTCUSD",
+        "plan_exported": False,
+        "show_settings": False,
+        "account_size": 10000.0,
+        "lot_size": 0.10,
+        "risk_percent": 1.0,
+        "entry_price": 1.1400,
+        "rr_choice": "1:2"
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+ensure_session_state_defaults()
 
 # === Symbol Utilities ===
 def load_symbols():
