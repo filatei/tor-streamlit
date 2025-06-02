@@ -1,5 +1,3 @@
-# mt5_risk_dashboard_signals.py
-
 import streamlit as st
 import requests
 import json
@@ -8,18 +6,13 @@ import pandas as pd
 import plotly.graph_objs as go
 from datetime import datetime
 
-# === Session State Initialization ===
+# === Session State Defaults ===
 if "selected_symbol" not in st.session_state:
     st.session_state.selected_symbol = "BTCUSD"
 if "plan_exported" not in st.session_state:
     st.session_state.plan_exported = False
-
-# === App Branding ===
-col1, col2 = st.columns([0.15, 0.85])
-with col1:
-    st.image("./images/logo.png", width=70)
-with col2:
-    st.title("Torama Trading Risk Planner")
+if "show_settings" not in st.session_state:
+    st.session_state.show_settings = False
 
 # === Symbol Utilities ===
 def load_symbols():
@@ -49,7 +42,7 @@ def fetch_price(symbol):
     except Exception:
         return None
 
-# === Symbol Loading ===
+# === Load Symbols ===
 symbols = load_symbols()
 symbol_names = [s["symbol"] for s in symbols]
 selected_symbol = st.selectbox("🧭 Select Symbol", options=symbol_names, index=symbol_names.index(st.session_state.selected_symbol))
@@ -62,17 +55,50 @@ live_price = fetch_price(yf_symbol)
 trade_direction = st.radio("Trade Direction", ["📈 Buy", "📉 Sell"], horizontal=True)
 is_buy = trade_direction.startswith("📈")
 
-# === Trade Settings ===
-with st.expander("⚙️ Trade Settings", expanded=True):
-    account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=10000.0, step=100.0)
-    lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=0.10, step=0.01)
-    risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=1.0, step=0.1)
-    entry_price = st.number_input("🎯 Entry Price", value=live_price or 1.1400, format="%.5f")
-    rr_choice = st.selectbox("📐 Select Risk:Reward", ["1:1", "1:2", "1:3"], index=1)
-    rr_map = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}
-    rr_value = rr_map[rr_choice]
+# === Modal Trigger in Top-Right ===
+st.markdown("""
+    <style>
+    div.stButton > button {
+        float: right;
+    }
+    .modal-container {
+        position: fixed;
+        top: 90px;
+        right: 10px;
+        width: 300px;
+        background-color: #111;
+        padding: 1rem;
+        border-radius: 10px;
+        z-index: 9999;
+        box-shadow: 0 0 15px rgba(255,255,255,0.2);
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# === SL/TP Auto Calculation ===
+if st.button("⚙️", help="Open Trade Settings"):
+    st.session_state.show_settings = True
+
+# === Settings Modal ===
+if st.session_state.show_settings:
+    st.markdown('<div class="modal-container">', unsafe_allow_html=True)
+    if st.button("❌", key="close_modal"):
+        st.session_state.show_settings = False
+
+    st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.get("account_size", 10000.0), step=100.0)
+    st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.get("lot_size", 0.10), step=0.01)
+    st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.get("risk_percent", 1.0), step=0.1)
+    st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or 1.1400, format="%.5f", key="entry_price_modal")
+    st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=1, key="rr_modal")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# === Use Modal Values ===
+account_size = st.session_state.account_size
+lot_size = st.session_state.lot_size
+risk_percent = st.session_state.risk_percent
+entry_price = st.session_state.entry_price
+rr_value = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}[st.session_state.rr_choice]
+
+# === SL/TP Logic ===
 risk_dollar = account_size * (risk_percent / 100)
 sl_pips = risk_dollar / (lot_size * 10)
 tp_pips = sl_pips * rr_value
@@ -82,7 +108,7 @@ tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - 
 stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
 take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
 
-# === Recalculate Metrics ===
+# === Final Risk Metrics ===
 sl_pips = abs(entry_price - stop_loss_price) / pip_precision
 tp_pips = abs(take_profit_price - entry_price) / pip_precision
 risk_amount = sl_pips * lot_size * 10
@@ -90,7 +116,7 @@ reward_amount = tp_pips * lot_size * 10
 rr_ratio = reward_amount / risk_amount if risk_amount else 0
 suggested_lot_size = (account_size * risk_percent / 100) / (sl_pips * 10) if sl_pips else 0
 
-# === Trade Summary ===
+# === Summary ===
 st.subheader("📊 Trade Summary")
 if live_price:
     st.info(f"💹 Current {selected_symbol} Price: {live_price}")
@@ -106,7 +132,7 @@ cols2[0].metric("Risk ($)", f"${risk_amount:.2f}")
 cols2[1].metric("Reward ($)", f"${reward_amount:.2f}")
 st.caption(f"Suggested Lot Size: {suggested_lot_size:.2f}")
 
-# === Export Plan ===
+# === Export ===
 custom_path = st.text_input("📁 Export Path", value="trade_risk_calc.json")
 if st.button("📤 Export Trade Plan"):
     trade_data = {
@@ -141,7 +167,7 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
     except FileNotFoundError:
         st.warning("No trade plan found at given path.")
 
-# === History Chart ===
+# === Chart ===
 with st.expander("📈 Historical Price Chart"):
     period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo"])
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
@@ -156,11 +182,13 @@ with st.expander("📈 Historical Price Chart"):
             fig.add_trace(go.Scatter(x=df.index, y=df["MA9"], line=dict(color='blue'), name="MA9"))
             fig.add_trace(go.Scatter(x=df.index, y=df["MA21"], line=dict(color='red'), name="MA21"))
             st.plotly_chart(fig, use_container_width=True)
+
             csv = df.to_csv().encode("utf-8")
             st.download_button("⬇️ Download CSV", data=csv, file_name=f"{selected_symbol}_{period}_{interval}.csv")
         else:
             st.warning("No historical data returned.")
 
-# === Footer ===
+# === Footer & Logo ===
 st.markdown("---")
-st.markdown("<center style='color:gray;'>© Torama 2025. All rights reserved.</center>", unsafe_allow_html=True)
+st.image("./images/logo.png", width=120)
+st.caption("© 2025 Torama. All rights reserved.")
