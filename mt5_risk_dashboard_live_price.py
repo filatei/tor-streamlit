@@ -6,6 +6,8 @@ import json
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objs as go
+import pytz
+
 from datetime import datetime
 
 # === Session State Defaults ===
@@ -164,25 +166,67 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
         st.warning("No trade plan found at given path.")
 
 # === Chart ===
-with st.expander("📈 Historical Price Chart"):
-    period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"])
-    interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
-    if st.button("📥 Fetch & Plot History"):
+# Additional enhancements to be added to your Streamlit app
+
+# === Updated Chart Block with Auto-Export, Session Filter, and Backtest ===
+with st.expander("\ud83d\udcc8 Historical Price Chart + Backtest"):
+    period = st.selectbox("\ud83d\uddd5\ufe0f Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
+    interval = st.selectbox("\u23f1\ufe0f Interval", ["1h", "30m", "15m"])
+    session_filter = st.selectbox("\ud83d\udd52 Session Filter", ["All", "London", "New York"], index=0)
+
+    if st.button("\ud83d\udcc5 Fetch, Filter & Backtest"):
         df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
-        if not df.empty:
+        if df.empty:
+            st.warning("No data returned from Yahoo Finance.")
+        else:
+            df.index = df.index.tz_localize(None)  # remove timezone
+            df = df.reset_index()
+
+            # Filter sessions
+            df["Hour"] = pd.to_datetime(df["Datetime"]).dt.hour
+            if session_filter == "London":
+                df = df[df["Hour"].between(7, 16)]  # London hours (WAT 8–17)
+            elif session_filter == "New York":
+                df = df[df["Hour"].between(13, 21)]  # NY hours (WAT 14–22)
+
+            # Save raw CSV
+            csv = df.to_csv(index=False).encode("utf-8")
+            filename = f"{selected_symbol}_{period}_{interval}_{session_filter}.csv"
+            st.download_button("\u2b07\ufe0f Download Filtered CSV", data=csv, file_name=filename)
+
+            # Plot chart
             df["MA9"] = df["Close"].rolling(9).mean()
             df["MA21"] = df["Close"].rolling(21).mean()
             fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
+            fig.add_trace(go.Candlestick(x=df["Datetime"], open=df["Open"], high=df["High"],
                                          low=df["Low"], close=df["Close"], name="Price"))
-            fig.add_trace(go.Scatter(x=df.index, y=df["MA9"], line=dict(color='blue'), name="MA9"))
-            fig.add_trace(go.Scatter(x=df.index, y=df["MA21"], line=dict(color='red'), name="MA21"))
+            fig.add_trace(go.Scatter(x=df["Datetime"], y=df["MA9"], line=dict(color='blue'), name="MA9"))
+            fig.add_trace(go.Scatter(x=df["Datetime"], y=df["MA21"], line=dict(color='red'), name="MA21"))
             st.plotly_chart(fig, use_container_width=True)
 
-            csv = df.to_csv().encode("utf-8")
-            st.download_button("⬇️ Download CSV", data=csv, file_name=f"{selected_symbol}_{period}_{interval}.csv")
-        else:
-            st.warning("No historical data returned.")
+            # Run basic breakout backtest (example: close > MA21 => Buy signal)
+            df.dropna(inplace=True)
+            trades = []
+            balance = 100000
+            for i in range(1, len(df)):
+                prev = df.iloc[i - 1]
+                curr = df.iloc[i]
+                if prev["Close"] < prev["MA21"] and curr["Close"] > curr["MA21"]:
+                    entry = curr["Close"]
+                    sl = entry - 0.0020  # 20 pips
+                    tp = entry + 0.0030  # 30 pips
+                    result = tp - entry
+                    profit = 1500 if result > 0 else -1000
+                    balance += profit
+                    trades.append({"entry": entry, "exit": tp if profit > 0 else sl, "result": profit, "balance": balance})
+
+            if trades:
+                st.subheader("\ud83d\udcca Backtest Results")
+                backtest_df = pd.DataFrame(trades)
+                st.line_chart(backtest_df["balance"])
+                st.write(backtest_df)
+            else:
+                st.info("No trades triggered in this dataset.")
 
 # === Footer ===
 st.markdown("---")
