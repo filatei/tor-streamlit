@@ -166,37 +166,40 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
         st.warning("No trade plan found at given path.")
 
 # === Chart ===
-# Additional enhancements to be added to your Streamlit app
-
 # === Updated Chart Block with Auto-Export, Session Filter, and Backtest ===
 with st.expander("📈 Historical Price Chart + Backtest"):
-    period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
+    period = st.selectbox("🗓️ Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
     session_filter = st.selectbox("🕒 Session Filter", ["All", "London", "New York"], index=0)
 
     if st.button("📅 Fetch, Filter & Backtest"):
         df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
+
         if df.empty:
             st.warning("No data returned from Yahoo Finance.")
         else:
-            df.index = df.index.tz_localize(None)  # remove timezone
-            df = df.reset_index()
+            df.index = df.index.tz_localize(None)
+            df.reset_index(inplace=True)
 
             # Filter sessions
-            df["Hour"] = pd.to_datetime(df["Datetime"]).dt.hour
+            df["Hour"] = df["Datetime"].dt.hour
             if session_filter == "London":
-                df = df[df["Hour"].between(7, 16)]  # London hours (WAT 8–17)
+                df = df[df["Hour"].between(7, 16)]
             elif session_filter == "New York":
-                df = df[df["Hour"].between(13, 21)]  # NY hours (WAT 14–22)
+                df = df[df["Hour"].between(13, 21)]
 
-            # Save raw CSV
+            # Save CSV
             csv = df.to_csv(index=False).encode("utf-8")
             filename = f"{selected_symbol}_{period}_{interval}_{session_filter}.csv"
             st.download_button("⬇️ Download Filtered CSV", data=csv, file_name=filename)
 
-            # Plot chart
+            # Compute indicators and drop NaNs
             df["MA9"] = df["Close"].rolling(9).mean()
             df["MA21"] = df["Close"].rolling(21).mean()
+            df.dropna(inplace=True)
+            df.reset_index(drop=True, inplace=True)
+
+            # Plot chart
             fig = go.Figure()
             fig.add_trace(go.Candlestick(x=df["Datetime"], open=df["Open"], high=df["High"],
                                          low=df["Low"], close=df["Close"], name="Price"))
@@ -204,8 +207,7 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             fig.add_trace(go.Scatter(x=df["Datetime"], y=df["MA21"], line=dict(color='red'), name="MA21"))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Run basic breakout backtest (example: close > MA21 => Buy signal)
-            df.dropna(inplace=True)
+            # Breakout Backtest
             trades = []
             balance = 100000
             for i in range(1, len(df)):
@@ -213,20 +215,29 @@ with st.expander("📈 Historical Price Chart + Backtest"):
                 curr = df.iloc[i]
                 if prev["Close"] < prev["MA21"] and curr["Close"] > curr["MA21"]:
                     entry = curr["Close"]
-                    sl = entry - 0.0020  # 20 pips
-                    tp = entry + 0.0030  # 30 pips
-                    result = tp - entry
-                    profit = 1500 if result > 0 else -1000
+                    sl = entry - 0.0020  # SL = 20 pips
+                    tp = entry + 0.0030  # TP = 30 pips
+                    exit_price = tp if curr["High"] >= tp else (sl if curr["Low"] <= sl else curr["Close"])
+                    result = exit_price - entry
+                    profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
                     balance += profit
-                    trades.append({"entry": entry, "exit": tp if profit > 0 else sl, "result": profit, "balance": balance})
+                    trades.append({
+                        "Datetime": curr["Datetime"],
+                        "Entry": entry,
+                        "Exit": exit_price,
+                        "Result ($)": profit,
+                        "Balance": balance
+                    })
 
+            # Show results
             if trades:
-                st.subheader("\ud83d\udcca Backtest Results")
-                backtest_df = pd.DataFrame(trades)
-                st.line_chart(backtest_df["balance"])
-                st.write(backtest_df)
+                st.subheader("📊 Backtest Results")
+                results_df = pd.DataFrame(trades)
+                st.line_chart(results_df.set_index("Datetime")["Balance"])
+                st.dataframe(results_df)
+                st.success(f"✅ Total Trades: {len(results_df)}, Final Balance: ${balance:,.2f}")
             else:
-                st.info("No trades triggered in this dataset.")
+                st.info("No breakout trades triggered in this dataset.")
 
 # === Footer ===
 st.markdown("---")
