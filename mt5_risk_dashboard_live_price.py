@@ -26,6 +26,16 @@ def ensure_session_state_defaults():
 
 ensure_session_state_defaults()
 
+# === App Title & Header ===
+logo_col, title_col, settings_col = st.columns([1, 6, 1])
+with logo_col:
+    st.image("./images/logo.png", width=50)
+with title_col:
+    st.markdown("<h2 style='margin-top: 0.5em;'>MT5 Risk Dashboard</h2>", unsafe_allow_html=True)
+with settings_col:
+    if st.button("⚙️", key="drawer-btn", help="Open Trade Settings"):
+        st.session_state.show_settings = True
+
 # === Symbol Utilities ===
 def load_symbols():
     try:
@@ -75,9 +85,6 @@ st.markdown("""
     .close-drawer { float: right; cursor: pointer; color: #fff; }
     </style>
 """, unsafe_allow_html=True)
-
-if st.button("⚙️", key="drawer-btn", help="Open Trade Settings"):
-    st.session_state.show_settings = True
 
 # === Drawer UI ===
 if st.session_state.show_settings:
@@ -191,5 +198,4 @@ with st.expander("📈 Historical Price Chart"):
 
 # === Footer ===
 st.markdown("---")
-st.image("./images/logo.png", width=120)
 st.caption("© 2025 Torama. All rights reserved.")
