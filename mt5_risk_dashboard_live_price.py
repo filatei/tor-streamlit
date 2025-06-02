@@ -211,23 +211,27 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             trades = []
             balance = 100000
             for i in range(1, len(df)):
-                prev = df.iloc[i - 1]
-                curr = df.iloc[i]
-                if prev["Close"] < prev["MA21"] and curr["Close"] > curr["MA21"]:
-                    entry = curr["Close"]
-                    sl = entry - 0.0020  # SL = 20 pips
-                    tp = entry + 0.0030  # TP = 30 pips
-                    exit_price = tp if curr["High"] >= tp else (sl if curr["Low"] <= sl else curr["Close"])
-                    result = exit_price - entry
-                    profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
-                    balance += profit
-                    trades.append({
-                        "Datetime": curr["Datetime"],
-                        "Entry": entry,
-                        "Exit": exit_price,
-                        "Result ($)": profit,
-                        "Balance": balance
-                    })
+                try:
+                    if df.at[i - 1, "Close"] < df.at[i - 1, "MA21"] and df.at[i, "Close"] > df.at[i, "MA21"]:
+                        entry = df.at[i, "Close"]
+                        sl = entry - 0.0020  # SL = 20 pips
+                        tp = entry + 0.0030  # TP = 30 pips
+                        high = df.at[i, "High"]
+                        low = df.at[i, "Low"]
+
+                        exit_price = tp if high >= tp else (sl if low <= sl else df.at[i, "Close"])
+                        result = exit_price - entry
+                        profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
+                        balance += profit
+                        trades.append({
+                            "Datetime": df.at[i, "Datetime"],
+                            "Entry": entry,
+                            "Exit": exit_price,
+                            "Result ($)": profit,
+                            "Balance": balance
+                        })
+                except Exception as e:
+                    st.warning(f"⚠️ Skipped row {i} due to: {e}")
 
             # Show results
             if trades:
