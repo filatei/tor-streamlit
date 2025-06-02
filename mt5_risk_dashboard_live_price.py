@@ -165,7 +165,7 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
 
 # === Chart ===
 with st.expander("📈 Historical Price Chart"):
-    period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo"])
+    period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"])
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
     if st.button("📥 Fetch & Plot History"):
         df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
