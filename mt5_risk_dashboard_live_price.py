@@ -1,4 +1,4 @@
-# mt5_risk_dashboard_signals.py (Cleaned and Fixed)
+# mt5_risk_dashboard_signals.py
 
 import streamlit as st
 import requests
@@ -55,27 +55,18 @@ def fetch_price(symbol):
     except Exception:
         return None
 
-# === UI Setup ===
-st.set_page_config(page_title="MT5 Risk Dashboard")
-logo_col, title_col = st.columns([1, 8])
-with logo_col:
-    st.image("./images/logo.png", width=50)
-with title_col:
-    st.markdown("<h2 style='margin-top: 0.5em;'>MT5 Risk Dashboard</h2>", unsafe_allow_html=True)
-
 # === Load Symbols ===
 symbols = load_symbols()
-symbols.extend([{"symbol": "USOIL", "pip_precision": 0.1}, {"symbol": "NZDCAD", "pip_precision": 0.0001}])
+symbols.extend([
+    {"symbol": "USOIL", "pip_precision": 0.1},
+    {"symbol": "NZDCAD", "pip_precision": 0.0001}
+])
 symbol_names = [s["symbol"] for s in symbols]
 selected_symbol = st.selectbox("🧭 Select Symbol", options=symbol_names, index=symbol_names.index(st.session_state.selected_symbol))
 st.session_state.selected_symbol = selected_symbol
 pip_precision = next((s["pip_precision"] for s in symbols if s["symbol"] == selected_symbol), 0.0001)
 yf_symbol = map_yf_symbol(selected_symbol)
 live_price = fetch_price(yf_symbol)
-
-# === Trade Direction ===
-trade_direction = st.radio("Trade Direction", ["📈 Buy", "📉 Sell"], horizontal=True)
-is_buy = trade_direction.startswith("📈")
 
 # === Trade Settings ===
 st.markdown("### ⚙️ Trade Settings")
@@ -85,7 +76,6 @@ st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_v
 st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f")
 st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice))
 
-# === SL/TP Calculation ===
 account_size = st.session_state.account_size
 lot_size = st.session_state.lot_size
 risk_percent = st.session_state.risk_percent
@@ -95,8 +85,8 @@ rr_value = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}[st.session_state.rr_choice]
 risk_dollar = account_size * (risk_percent / 100)
 sl_pips = risk_dollar / (lot_size * 10)
 tp_pips = sl_pips * rr_value
-sl_price = entry_price - (sl_pips * pip_precision) if is_buy else entry_price + (sl_pips * pip_precision)
-tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - (tp_pips * pip_precision)
+sl_price = entry_price - (sl_pips * pip_precision)
+tp_price = entry_price + (tp_pips * pip_precision)
 
 stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
 take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
@@ -108,7 +98,7 @@ reward_amount = tp_pips * lot_size * 10
 rr_ratio = reward_amount / risk_amount if risk_amount else 0
 suggested_lot_size = (account_size * risk_percent / 100) / (sl_pips * 10) if sl_pips else 0
 
-# === Summary ===
+# === Trade Summary ===
 st.subheader("📊 Trade Summary")
 if live_price:
     st.info(f"💹 Current {selected_symbol} Price: {live_price}")
@@ -124,13 +114,12 @@ cols2[0].metric("Risk ($)", f"${risk_amount:.2f}")
 cols2[1].metric("Reward ($)", f"${reward_amount:.2f}")
 st.caption(f"Suggested Lot Size: {suggested_lot_size:.2f}")
 
-# === Export Section ===
+# === Export ===
 custom_path = st.text_input("📁 Export Path", value="trade_risk_calc.json")
 if st.button("📤 Export Trade Plan"):
     trade_data = {
         "symbol": st.session_state.selected_symbol,
-        "yf_symbol": yf_symbol,
-        "trade_type": "Buy" if is_buy else "Sell",
+        "yf_symbol": map_yf_symbol(st.session_state.selected_symbol),
         "lot_size": lot_size,
         "account_size": account_size,
         "risk_percent": risk_percent,
@@ -148,20 +137,11 @@ if st.button("📤 Export Trade Plan"):
     }
     with open(custom_path, "w") as f:
         json.dump(trade_data, f, indent=2)
-    st.session_state.plan_exported = True
     st.success(f"✅ Saved to {custom_path}")
 
-if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported):
-    try:
-        with open(custom_path, "r") as f:
-            content = f.read()
-        st.code(content, language="json")
-    except FileNotFoundError:
-        st.warning("No trade plan found at given path.")
-
-# === Historical Data + Breakout Backtest ===
+# === Chart + Backtest ===
 with st.expander("📈 Historical Price Chart + Backtest"):
-    period = st.selectbox("🗓️ Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
+    period = st.selectbox("🗓️ Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo"], index=5)
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
     session_filter = st.selectbox("🕒 Session Filter", ["All", "London", "New York"], index=0)
 
@@ -171,11 +151,10 @@ with st.expander("📈 Historical Price Chart + Backtest"):
         if df.empty:
             st.warning("No data returned from Yahoo Finance.")
         else:
+            df.index = df.index.tz_localize(None)
             df.reset_index(inplace=True)
-            df.rename(columns={"index": "Datetime"}, inplace=True)
-            df["Datetime"] = pd.to_datetime(df["Datetime"])
-            df["Hour"] = df["Datetime"].dt.hour
 
+            df["Hour"] = df["Datetime"].dt.hour
             if session_filter == "London":
                 df = df[df["Hour"].between(7, 16)]
             elif session_filter == "New York":
@@ -185,41 +164,46 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             filename = f"{selected_symbol}_{period}_{interval}_{session_filter}.csv"
             st.download_button("⬇️ Download Filtered CSV", data=csv, file_name=filename)
 
-            df["MA9"] = df["Close"].rolling(9).mean()
             df["MA21"] = df["Close"].rolling(21).mean()
             df.dropna(inplace=True)
+            df.reset_index(drop=True, inplace=True)
 
             fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df["Datetime"], open=df["Open"], high=df["High"],
-                                         low=df["Low"], close=df["Close"], name="Price"))
-            fig.add_trace(go.Scatter(x=df["Datetime"], y=df["MA9"], line=dict(color='blue'), name="MA9"))
+            fig.add_trace(go.Candlestick(x=df["Datetime"], open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price"))
             fig.add_trace(go.Scatter(x=df["Datetime"], y=df["MA21"], line=dict(color='red'), name="MA21"))
             st.plotly_chart(fig, use_container_width=True)
 
             trades = []
             balance = 100000
             for i in range(1, len(df)):
-                prev = df.iloc[i - 1]
-                curr = df.iloc[i]
-                if prev["Close"] < prev["MA21"] and curr["Close"] > curr["MA21"]:
-                    entry = curr["Close"]
-                    sl = entry - 0.0020
-                    tp = entry + 0.0030
-                    high = curr["High"]
-                    low = curr["Low"]
-                    exit_price = tp if high >= tp else (sl if low <= sl else curr["Close"])
-                    profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
-                    balance += profit
-                    trades.append({
-                        "Datetime": curr["Datetime"],
-                        "Entry": entry,
-                        "Exit": exit_price,
-                        "Result ($)": profit,
-                        "Balance": balance
-                    })
+                try:
+                    prev_close = df.iloc[i - 1]["Close"]
+                    prev_ma21 = df.iloc[i - 1]["MA21"]
+                    curr_close = df.iloc[i]["Close"]
+                    curr_ma21 = df.iloc[i]["MA21"]
+
+                    if prev_close < prev_ma21 and curr_close > curr_ma21:
+                        entry = curr_close
+                        sl = entry - 0.0020
+                        tp = entry + 0.0030
+                        high = df.iloc[i]["High"]
+                        low = df.iloc[i]["Low"]
+
+                        exit_price = tp if high >= tp else (sl if low <= sl else curr_close)
+                        profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
+                        balance += profit
+
+                        trades.append({
+                            "Datetime": df.iloc[i]["Datetime"],
+                            "Entry": entry,
+                            "Exit": exit_price,
+                            "Result ($)": profit,
+                            "Balance": balance
+                        })
+                except Exception as e:
+                    st.warning(f"⚠️ Skipped row {i} due to: {e}")
 
             if trades:
-                st.subheader("📊 Backtest Results")
                 results_df = pd.DataFrame(trades)
                 st.line_chart(results_df.set_index("Datetime")["Balance"])
                 st.dataframe(results_df)
@@ -227,5 +211,6 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             else:
                 st.info("No breakout trades triggered in this dataset.")
 
+# === Footer ===
 st.markdown("---")
 st.caption("© 2025 Torama. All rights reserved.")
