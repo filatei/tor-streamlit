@@ -94,21 +94,6 @@ def fetch_price(symbol):
     except Exception:
         return None
 
-def custom_analysis_nzdcad():
-    df = yf.download("NZDCAD=X", period="7d", interval="1h")
-    if df.empty:
-        st.warning("No NZDCAD data returned.")
-        return
-
-    df["MA9"] = df["Close"].rolling(window=9).mean()
-    df["MA21"] = df["Close"].rolling(window=21).mean()
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="Close", line=dict(color="white")))
-    fig.add_trace(go.Scatter(x=df.index, y=df["MA9"], name="MA9", line=dict(color="blue")))
-    fig.add_trace(go.Scatter(x=df.index, y=df["MA21"], name="MA21", line=dict(color="red")))
-    fig.update_layout(title="NZDCAD Trend (MA9 vs MA21)", xaxis_title="Time", yaxis_title="Price")
-    st.plotly_chart(fig, use_container_width=True)
-
 # === Load Symbols ===
 symbols = load_symbols()
 symbols.extend([
@@ -128,16 +113,17 @@ is_buy = trade_direction.startswith("📈")
 
 # === Drawer UI ===
 if st.session_state.show_settings:
-    st.markdown('<div class="drawer">', unsafe_allow_html=True)
-    if st.button("❌", key="close_drawer"):
-        st.session_state.show_settings = False
+    with st.container():
+        st.markdown('<div class="drawer">', unsafe_allow_html=True)
+        if st.button("❌", key="close_drawer"):
+            st.session_state.show_settings = False
 
-    st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.account_size, step=100.0)
-    st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.lot_size, step=0.01)
-    st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.risk_percent, step=0.1)
-    st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f", key="entry_price_drawer")
-    st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice), key="rr_drawer")
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.account_size, step=100.0)
+        st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.lot_size, step=0.01)
+        st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_value=0.1, max_value=10.0, value=st.session_state.risk_percent, step=0.1)
+        st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f", key="entry_price_drawer")
+        st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice), key="rr_drawer")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # === Apply Drawer Values ===
 account_size = st.session_state.account_size
@@ -146,9 +132,96 @@ risk_percent = st.session_state.risk_percent
 entry_price = st.session_state.entry_price
 rr_value = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}[st.session_state.rr_choice]
 
-# === Custom Logic for NZDCAD ===
-if selected_symbol == "NZDCAD":
-    st.subheader("🧠 Custom Analysis for NZDCAD")
-    custom_analysis_nzdcad()
+# === SL/TP Logic ===
+risk_dollar = account_size * (risk_percent / 100)
+sl_pips = risk_dollar / (lot_size * 10)
+tp_pips = sl_pips * rr_value
+sl_price = entry_price - (sl_pips * pip_precision) if is_buy else entry_price + (sl_pips * pip_precision)
+tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - (tp_pips * pip_precision)
 
-# (rest of code remains unchanged)
+stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
+take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
+
+# === Final Calculations ===
+sl_pips = abs(entry_price - stop_loss_price) / pip_precision
+tp_pips = abs(take_profit_price - entry_price) / pip_precision
+risk_amount = sl_pips * lot_size * 10
+reward_amount = tp_pips * lot_size * 10
+rr_ratio = reward_amount / risk_amount if risk_amount else 0
+suggested_lot_size = (account_size * risk_percent / 100) / (sl_pips * 10) if sl_pips else 0
+
+# === Summary ===
+st.subheader("📊 Trade Summary")
+if live_price:
+    st.info(f"💹 Current {selected_symbol} Price: {live_price}")
+else:
+    st.warning("⚠️ Live price unavailable.")
+
+cols = st.columns(3)
+cols[0].metric("SL", f"{sl_pips:.1f} pips")
+cols[1].metric("TP", f"{tp_pips:.1f} pips")
+cols[2].metric("R:R", f"{rr_ratio:.2f}")
+cols2 = st.columns(2)
+cols2[0].metric("Risk ($)", f"${risk_amount:.2f}")
+cols2[1].metric("Reward ($)", f"${reward_amount:.2f}")
+st.caption(f"Suggested Lot Size: {suggested_lot_size:.2f}")
+
+# === Export ===
+custom_path = st.text_input("📁 Export Path", value="trade_risk_calc.json")
+if st.button("📤 Export Trade Plan"):
+    trade_data = {
+        "symbol": st.session_state.selected_symbol,
+        "yf_symbol": map_yf_symbol(st.session_state.selected_symbol),
+        "trade_type": "Buy" if is_buy else "Sell",
+        "lot_size": lot_size,
+        "account_size": account_size,
+        "risk_percent": risk_percent,
+        "entry_price": entry_price,
+        "stop_loss": stop_loss_price,
+        "take_profit": take_profit_price,
+        "pip_precision": pip_precision,
+        "stop_loss_pips": round(sl_pips, 1),
+        "take_profit_pips": round(tp_pips, 1),
+        "risk_usd": round(risk_amount, 2),
+        "reward_usd": round(reward_amount, 2),
+        "rr_ratio": round(rr_ratio, 2),
+        "suggested_lot_size": round(suggested_lot_size, 2),
+        "created_at": str(datetime.now())
+    }
+    with open(custom_path, "w") as f:
+        json.dump(trade_data, f, indent=2)
+    st.session_state.plan_exported = True
+    st.success(f"✅ Saved to {custom_path}")
+
+if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported):
+    try:
+        with open(custom_path, "r") as f:
+            content = f.read()
+        st.code(content, language="json")
+    except FileNotFoundError:
+        st.warning("No trade plan found at given path.")
+
+# === Chart ===
+with st.expander("📈 Historical Price Chart"):
+    period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo"])
+    interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
+    if st.button("📥 Fetch & Plot History"):
+        df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
+        if not df.empty:
+            df["MA9"] = df["Close"].rolling(9).mean()
+            df["MA21"] = df["Close"].rolling(21).mean()
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
+                                         low=df["Low"], close=df["Close"], name="Price"))
+            fig.add_trace(go.Scatter(x=df.index, y=df["MA9"], line=dict(color='blue'), name="MA9"))
+            fig.add_trace(go.Scatter(x=df.index, y=df["MA21"], line=dict(color='red'), name="MA21"))
+            st.plotly_chart(fig, use_container_width=True)
+
+            csv = df.to_csv().encode("utf-8")
+            st.download_button("⬇️ Download CSV", data=csv, file_name=f"{selected_symbol}_{period}_{interval}.csv")
+        else:
+            st.warning("No historical data returned.")
+
+# === Footer ===
+st.markdown("---")
+st.caption("© 2025 Torama. All rights reserved.")
