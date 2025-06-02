@@ -8,11 +8,18 @@ import pandas as pd
 import plotly.graph_objs as go
 from datetime import datetime
 
-# === Initialize state ===
+# === Session State Initialization ===
 if "selected_symbol" not in st.session_state:
     st.session_state.selected_symbol = "BTCUSD"
 if "plan_exported" not in st.session_state:
     st.session_state.plan_exported = False
+
+# === App Branding ===
+col1, col2 = st.columns([0.15, 0.85])
+with col1:
+    st.image("./images/logo.png", width=70)
+with col2:
+    st.title("Torama Trading Risk Planner")
 
 # === Symbol Utilities ===
 def load_symbols():
@@ -42,7 +49,7 @@ def fetch_price(symbol):
     except Exception:
         return None
 
-# === Load Symbols & Price ===
+# === Symbol Loading ===
 symbols = load_symbols()
 symbol_names = [s["symbol"] for s in symbols]
 selected_symbol = st.selectbox("🧭 Select Symbol", options=symbol_names, index=symbol_names.index(st.session_state.selected_symbol))
@@ -65,7 +72,7 @@ with st.expander("⚙️ Trade Settings", expanded=True):
     rr_map = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}
     rr_value = rr_map[rr_choice]
 
-# === SL/TP Calculation ===
+# === SL/TP Auto Calculation ===
 risk_dollar = account_size * (risk_percent / 100)
 sl_pips = risk_dollar / (lot_size * 10)
 tp_pips = sl_pips * rr_value
@@ -75,7 +82,7 @@ tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - 
 stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
 take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
 
-# === Final Calculation ===
+# === Recalculate Metrics ===
 sl_pips = abs(entry_price - stop_loss_price) / pip_precision
 tp_pips = abs(take_profit_price - entry_price) / pip_precision
 risk_amount = sl_pips * lot_size * 10
@@ -99,7 +106,7 @@ cols2[0].metric("Risk ($)", f"${risk_amount:.2f}")
 cols2[1].metric("Reward ($)", f"${reward_amount:.2f}")
 st.caption(f"Suggested Lot Size: {suggested_lot_size:.2f}")
 
-# === Export JSON ===
+# === Export Plan ===
 custom_path = st.text_input("📁 Export Path", value="trade_risk_calc.json")
 if st.button("📤 Export Trade Plan"):
     trade_data = {
@@ -126,7 +133,6 @@ if st.button("📤 Export Trade Plan"):
     st.session_state.plan_exported = True
     st.success(f"✅ Saved to {custom_path}")
 
-# === View Plan ===
 if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported):
     try:
         with open(custom_path, "r") as f:
@@ -135,7 +141,7 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
     except FileNotFoundError:
         st.warning("No trade plan found at given path.")
 
-# === History View ===
+# === History Chart ===
 with st.expander("📈 Historical Price Chart"):
     period = st.selectbox("📅 Period", ["5d", "7d", "1mo", "3mo"])
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
@@ -150,8 +156,11 @@ with st.expander("📈 Historical Price Chart"):
             fig.add_trace(go.Scatter(x=df.index, y=df["MA9"], line=dict(color='blue'), name="MA9"))
             fig.add_trace(go.Scatter(x=df.index, y=df["MA21"], line=dict(color='red'), name="MA21"))
             st.plotly_chart(fig, use_container_width=True)
-
             csv = df.to_csv().encode("utf-8")
             st.download_button("⬇️ Download CSV", data=csv, file_name=f"{selected_symbol}_{period}_{interval}.csv")
         else:
             st.warning("No historical data returned.")
+
+# === Footer ===
+st.markdown("---")
+st.markdown("<center style='color:gray;'>© Torama 2025. All rights reserved.</center>", unsafe_allow_html=True)
