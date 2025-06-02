@@ -1,4 +1,4 @@
-# mt5_risk_dashboard_signals.py
+# mt5_risk_dashboard_signals.py (Cleaned and Fixed)
 
 import streamlit as st
 import requests
@@ -6,8 +6,6 @@ import json
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objs as go
-import pytz
-
 from datetime import datetime
 
 # === Session State Defaults ===
@@ -26,13 +24,6 @@ def ensure_session_state_defaults():
             st.session_state[key] = value
 
 ensure_session_state_defaults()
-
-# === App Title & Header ===
-logo_col, title_col = st.columns([1, 8])
-with logo_col:
-    st.image("./images/logo.png", width=50)
-with title_col:
-    st.markdown("<h2 style='margin-top: 0.5em;'>MT5 Risk Dashboard</h2>", unsafe_allow_html=True)
 
 # === Symbol Utilities ===
 def load_symbols():
@@ -64,12 +55,17 @@ def fetch_price(symbol):
     except Exception:
         return None
 
+# === UI Setup ===
+st.set_page_config(page_title="MT5 Risk Dashboard")
+logo_col, title_col = st.columns([1, 8])
+with logo_col:
+    st.image("./images/logo.png", width=50)
+with title_col:
+    st.markdown("<h2 style='margin-top: 0.5em;'>MT5 Risk Dashboard</h2>", unsafe_allow_html=True)
+
 # === Load Symbols ===
 symbols = load_symbols()
-symbols.extend([
-    {"symbol": "USOIL", "pip_precision": 0.1},
-    {"symbol": "NZDCAD", "pip_precision": 0.0001}
-])
+symbols.extend([{"symbol": "USOIL", "pip_precision": 0.1}, {"symbol": "NZDCAD", "pip_precision": 0.0001}])
 symbol_names = [s["symbol"] for s in symbols]
 selected_symbol = st.selectbox("🧭 Select Symbol", options=symbol_names, index=symbol_names.index(st.session_state.selected_symbol))
 st.session_state.selected_symbol = selected_symbol
@@ -81,7 +77,7 @@ live_price = fetch_price(yf_symbol)
 trade_direction = st.radio("Trade Direction", ["📈 Buy", "📉 Sell"], horizontal=True)
 is_buy = trade_direction.startswith("📈")
 
-# === Inline Trade Settings ===
+# === Trade Settings ===
 st.markdown("### ⚙️ Trade Settings")
 st.session_state.account_size = st.number_input("💼 Account Balance ($)", min_value=100.0, value=st.session_state.account_size, step=100.0)
 st.session_state.lot_size = st.number_input("📦 Lot Size", min_value=0.01, value=st.session_state.lot_size, step=0.01)
@@ -89,14 +85,13 @@ st.session_state.risk_percent = st.number_input("🎯 Risk per Trade (%)", min_v
 st.session_state.entry_price = st.number_input("🎯 Entry Price", value=live_price or st.session_state.entry_price, format="%.5f")
 st.session_state.rr_choice = st.selectbox("📐 Risk:Reward", ["1:1", "1:2", "1:3"], index=["1:1", "1:2", "1:3"].index(st.session_state.rr_choice))
 
-# === Apply Values ===
+# === SL/TP Calculation ===
 account_size = st.session_state.account_size
 lot_size = st.session_state.lot_size
 risk_percent = st.session_state.risk_percent
 entry_price = st.session_state.entry_price
 rr_value = {"1:1": 1.0, "1:2": 2.0, "1:3": 3.0}[st.session_state.rr_choice]
 
-# === SL/TP Logic ===
 risk_dollar = account_size * (risk_percent / 100)
 sl_pips = risk_dollar / (lot_size * 10)
 tp_pips = sl_pips * rr_value
@@ -106,7 +101,6 @@ tp_price = entry_price + (tp_pips * pip_precision) if is_buy else entry_price - 
 stop_loss_price = st.number_input("🛑 Stop Loss Price", value=sl_price, format="%.5f")
 take_profit_price = st.number_input("🎯 Take Profit Price", value=tp_price, format="%.5f")
 
-# === Final Calculations ===
 sl_pips = abs(entry_price - stop_loss_price) / pip_precision
 tp_pips = abs(take_profit_price - entry_price) / pip_precision
 risk_amount = sl_pips * lot_size * 10
@@ -130,12 +124,12 @@ cols2[0].metric("Risk ($)", f"${risk_amount:.2f}")
 cols2[1].metric("Reward ($)", f"${reward_amount:.2f}")
 st.caption(f"Suggested Lot Size: {suggested_lot_size:.2f}")
 
-# === Export ===
+# === Export Section ===
 custom_path = st.text_input("📁 Export Path", value="trade_risk_calc.json")
 if st.button("📤 Export Trade Plan"):
     trade_data = {
         "symbol": st.session_state.selected_symbol,
-        "yf_symbol": map_yf_symbol(st.session_state.selected_symbol),
+        "yf_symbol": yf_symbol,
         "trade_type": "Buy" if is_buy else "Sell",
         "lot_size": lot_size,
         "account_size": account_size,
@@ -165,41 +159,36 @@ if st.button("📄 View Trade Plan", disabled=not st.session_state.plan_exported
     except FileNotFoundError:
         st.warning("No trade plan found at given path.")
 
-# === Chart ===
-# === Updated Chart Block with Auto-Export, Session Filter, and Backtest ===
+# === Historical Data + Breakout Backtest ===
 with st.expander("📈 Historical Price Chart + Backtest"):
     period = st.selectbox("🗓️ Period", ["5d", "7d", "1mo", "3mo", "6mo", "12mo", "max"], index=5)
     interval = st.selectbox("⏱️ Interval", ["1h", "30m", "15m"])
     session_filter = st.selectbox("🕒 Session Filter", ["All", "London", "New York"], index=0)
 
     if st.button("📅 Fetch, Filter & Backtest"):
-        df = yf.download(map_yf_symbol(selected_symbol), period=period, interval=interval)
+        df = yf.download(yf_symbol, period=period, interval=interval)
 
         if df.empty:
             st.warning("No data returned from Yahoo Finance.")
         else:
-            df.index = df.index.tz_localize(None)
             df.reset_index(inplace=True)
-
-            # Filter sessions
+            df.rename(columns={"index": "Datetime"}, inplace=True)
+            df["Datetime"] = pd.to_datetime(df["Datetime"])
             df["Hour"] = df["Datetime"].dt.hour
+
             if session_filter == "London":
                 df = df[df["Hour"].between(7, 16)]
             elif session_filter == "New York":
                 df = df[df["Hour"].between(13, 21)]
 
-            # Save CSV
             csv = df.to_csv(index=False).encode("utf-8")
             filename = f"{selected_symbol}_{period}_{interval}_{session_filter}.csv"
             st.download_button("⬇️ Download Filtered CSV", data=csv, file_name=filename)
 
-            # Compute indicators and drop NaNs
             df["MA9"] = df["Close"].rolling(9).mean()
             df["MA21"] = df["Close"].rolling(21).mean()
             df.dropna(inplace=True)
-            df.reset_index(drop=True, inplace=True)
 
-            # Plot chart
             fig = go.Figure()
             fig.add_trace(go.Candlestick(x=df["Datetime"], open=df["Open"], high=df["High"],
                                          low=df["Low"], close=df["Close"], name="Price"))
@@ -207,33 +196,28 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             fig.add_trace(go.Scatter(x=df["Datetime"], y=df["MA21"], line=dict(color='red'), name="MA21"))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Breakout Backtest
             trades = []
             balance = 100000
             for i in range(1, len(df)):
-                try:
-                    if df.at[i - 1, "Close"] < df.at[i - 1, "MA21"] and df.at[i, "Close"] > df.at[i, "MA21"]:
-                        entry = df.at[i, "Close"]
-                        sl = entry - 0.0020  # SL = 20 pips
-                        tp = entry + 0.0030  # TP = 30 pips
-                        high = df.at[i, "High"]
-                        low = df.at[i, "Low"]
+                prev = df.iloc[i - 1]
+                curr = df.iloc[i]
+                if prev["Close"] < prev["MA21"] and curr["Close"] > curr["MA21"]:
+                    entry = curr["Close"]
+                    sl = entry - 0.0020
+                    tp = entry + 0.0030
+                    high = curr["High"]
+                    low = curr["Low"]
+                    exit_price = tp if high >= tp else (sl if low <= sl else curr["Close"])
+                    profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
+                    balance += profit
+                    trades.append({
+                        "Datetime": curr["Datetime"],
+                        "Entry": entry,
+                        "Exit": exit_price,
+                        "Result ($)": profit,
+                        "Balance": balance
+                    })
 
-                        exit_price = tp if high >= tp else (sl if low <= sl else df.at[i, "Close"])
-                        result = exit_price - entry
-                        profit = 1500 if exit_price >= tp else (-1000 if exit_price <= sl else 0)
-                        balance += profit
-                        trades.append({
-                            "Datetime": df.at[i, "Datetime"],
-                            "Entry": entry,
-                            "Exit": exit_price,
-                            "Result ($)": profit,
-                            "Balance": balance
-                        })
-                except Exception as e:
-                    st.warning(f"⚠️ Skipped row {i} due to: {e}")
-
-            # Show results
             if trades:
                 st.subheader("📊 Backtest Results")
                 results_df = pd.DataFrame(trades)
@@ -243,6 +227,5 @@ with st.expander("📈 Historical Price Chart + Backtest"):
             else:
                 st.info("No breakout trades triggered in this dataset.")
 
-# === Footer ===
 st.markdown("---")
 st.caption("© 2025 Torama. All rights reserved.")
